@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Dict, TypedDict
-
 from langgraph.graph import StateGraph, END
+
+from app.llm_gemini_sdk import generate_text
 
 class AgentState(TypedDict, total=False):
     request: Dict[str, Any]
@@ -18,8 +18,18 @@ def build_graph():
 
     def respond(state: AgentState) -> AgentState:
         req = state.get("request", {})
-        query = req.get("query") or req.get("payload", {}).get("query") or ""
-        state["answer"] = {"text": f"[echo] {query}"}
+        query = req.get("query", "")
+
+        attrs = req.get("attributes") or {}
+        prompt = (
+            "너는 데이트 코스 추천 도우미야. \n"
+            f"사용자 요청: {query}\n"
+            f"추가 조건(attributes): {attrs}\n"
+            "짧고 실용적으로 추천해줘."
+        )
+
+        text = generate_text(prompt)
+        state["answer"] = {"text": text}
         return state
 
     g.add_node("plan", plan)

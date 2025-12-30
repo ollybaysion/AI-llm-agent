@@ -7,6 +7,8 @@ from uuid import uuid4
 from confluent_kafka import KafkaException
 from pydantic import ValidationError
 
+from dotenv import load_dotenv
+
 from app.consumer import build_consumer
 from app.producer import build_producer
 from app.config import LLM_RES_TOPIC
@@ -14,6 +16,8 @@ from app.agent import agent_call
 
 from app.model.gmessage import GMessage
 from app.model.recommend import RecommendLlmRequest, RecommendLlmResponse
+
+load_dotenv()
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
