@@ -1,13 +1,24 @@
+from __future__ import annotations
+
 import json
-import time
+from datetime import datetime, timezone
+from uuid import uuid4
+
 from confluent_kafka import KafkaException
+from pydantic import ValidationError
 
-from .consumer import build_consumer
-from .producer import build_producer
-from .config import LLM_RES_TOPIC
-from .agent import agent_call
+from app.consumer import build_consumer
+from app.producer import build_producer
+from app.config import LLM_RES_TOPIC
+from app.agent import agent_call
 
-def main():
+from app.model.gmessage import GMessage
+from app.model.recommend import RecommendLlmRequest, RecommendLlmResponse
+
+def now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+def main() -> None:
     consumer = build_consumer()
     producer = build_producer()
 
@@ -19,32 +30,38 @@ def main():
             if msg.error():
                 raise KafkaException(msg.error())
 
-            key = msg.key().decode("utf-8") if msg.key() else None
-            req = json.loads(msg.value().decode("utf-8"))
-
-            job_id = req.get("jobId")
             try:
-                out = agent_call(req)
-                res = {
-                    "jobId": job_id,
-                    "status": "SUCCESS",
-                    "payload": out,
-                    "error": None,
-                    "createdAt": int(time.time() * 1000),
-                }
-            except Exception as e:
-                res = {
-                    "jobId": job_id,
-                    "status": "FAIL",
-                    "payload": None,
-                    "error": {"message": str(e), "type": e.__class__.__name__},
-                    "createdAt": int(time.time() * 1000),
-                }
+                raw = json.loads(msg.value().decode("utf-8"))
+                greq = GMessage[RecommendLlmRequest].model_validate(raw)
+            except (json.JSONDecodeError, ValidationError) as e:
+                print("[INVALID_MESSAGE]", e)
+                consumer.commit(message=msg, asynchronous=False)
+                continue
+
+            req = greq.payload
+            out = agent_call(req.model_dump())
+
+            inner = RecommendLlmResponse(
+                jobId=req.jobId,
+                messageId=str(uuid4()),
+                createdAt=now_utc(),
+                payload=out,
+            )
+
+            out_key = greq.key or req.jobId
+            gres = GMessage[RecommendLlmResponse](
+                gId=str(uuid4()),
+                gDestination="llm.response",
+                key=out_key,
+                createdAt=now_utc(),
+                headers=greq.headers,
+                payload=inner,
+            )
 
             producer.produce(
                 LLM_RES_TOPIC,
-                key=key.encode("utf-8") if key else None,
-                value=json.dumps(res, ensure_ascii=False).encode("utf-8"),
+                key=out_key.encode("utf-8"),
+                value=gres.model_dump_json().encode("utf-8"),
             )
             producer.flush(5)
 
