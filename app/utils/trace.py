@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Protocol
 
-from ..state.agent_state import AgentState
 from ..state.trace import NodeHistory, ErrorItem, ProgressEvent
 
-def trace_node_start(state: AgentState, node: str, detail: Optional[Dict[str, Any]] = None) -> None:
-    state.trace.node_histoy.append(
+class HasTrace(Protocol):
+    trace: Any
+    progress_event: Any
+
+def trace_node_start(state: HasTrace, node: str, detail: Optional[Dict[str, Any]] = None) -> None:
+    state.trace.node_history.append(
         NodeHistory(
             node=node,
             started_at=datetime.utcnow(),
@@ -17,7 +20,7 @@ def trace_node_start(state: AgentState, node: str, detail: Optional[Dict[str, An
         )
     )
 
-def trace_node_end_ok(state: AgentState, node: str, detail: Optional[Dict[str, Any]] = None) -> None:
+def trace_node_end_ok(state: HasTrace, node: str, detail: Optional[Dict[str, Any]] = None) -> None:
     entry = _find_last_open_entry(state, node)
     if entry is None:
         state.trace.node_history.append(
@@ -38,7 +41,7 @@ def trace_node_end_ok(state: AgentState, node: str, detail: Optional[Dict[str, A
 
 
 def trace_node_end_error(
-        state: AgentState,
+        state: HasTrace,
         node: str,
         code: str,
         message: str,
@@ -64,8 +67,8 @@ def trace_node_end_error(
     entry.detail = detail or {"code": code, "message": message}
 
 
-def trace_event(state: AgentState, event_type: str, payload: Optional[Dict[str, Any]] = None) -> None:
-    state.progress_events.append(
+def trace_event(state: HasTrace, event_type: str, payload: Optional[Dict[str, Any]] = None) -> None:
+    state.progress_event.append(
         ProgressEvent(
             ts=datetime.utcnow(),
             type=event_type,
@@ -74,7 +77,7 @@ def trace_event(state: AgentState, event_type: str, payload: Optional[Dict[str, 
     )
 
 def trace_node_done_event(
-        state: AgentState,
+        state: HasTrace,
         node: str,
         summary: Optional[str] = None,
         payload: Optional[Dict[str, Any]] = None,
@@ -86,10 +89,10 @@ def trace_node_done_event(
         p.update(payload)
     trace_event(state, "NODE_DONE", p)
 
-def trace_final_event(state: AgentState, payload: Optional[Dict[str, Any]] = None) -> None:
+def trace_final_event(state: HasTrace, payload: Optional[Dict[str, Any]] = None) -> None:
     trace_event(state, "FINAL", payload or {})
 
-def _find_last_open_entry(state: AgentState, node: str) -> Optional[NodeHistory]:
+def _find_last_open_entry(state: HasTrace, node: str) -> Optional[NodeHistory]:
     for entry in reversed(state.trace.node_history):
         if entry.node == node and entry.ended_at is None:
             return entry

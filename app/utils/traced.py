@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional, TypeVar, cast
+from typing import Any, Callable, Dict, Optional, Protocol, TypeVar, cast
 
-from ..state.agent_state import AgentState
 from .trace import (
     trace_node_start,
     trace_node_end_ok,
@@ -11,7 +10,11 @@ from .trace import (
     trace_node_done_event,
 )
 
-TState = TypeVar("TState", bound=AgentState)
+class HasTrace(Protocol):
+    trace: Any
+    progress_event: Any
+
+TState = TypeVar("TState", bound=HasTrace)
 NodeFn = Callable[[TState], Dict[str, Any]]
 
 @dataclass(frozen=True)
