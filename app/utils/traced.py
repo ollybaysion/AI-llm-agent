@@ -28,10 +28,10 @@ def traced_node(
         done_summary: Optional[str] = None,
 ) -> Callable[[NodeFn[TState]], NodeFn[TState]]:
     def decorator(fn: NodeFn[TState]) -> NodeFn[TState]:
-        def wrapper(state: TState) -> Dict[str, Any]:
+        def wrapper(state: TState, *args: Any, **kwargs: Any) -> Dict[str, Any]:
             trace_node_start(state, node_name, detail=start_detail)
             try:
-                patch = fn(state)
+                patch = fn(state, *args, **kwargs)
                 if patch is None:
                     patch = {}
                 if not isinstance(patch, dict):
@@ -67,6 +67,6 @@ def traced_node(
                     return {}
                 raise
 
-        return cast(NodeFn[TState], wrapper)
+        return cast(NodeFn, wrapper)
     return decorator
 
