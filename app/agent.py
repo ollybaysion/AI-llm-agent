@@ -16,15 +16,10 @@ def agent_call(llm_request: RecommendLlmRequest, llm: LlmClient) -> Dict[str, An
         message = (state.response.final or "").strip()
         errors = [e.model_dump() for e in state.trace.errors]
 
-        print(message)
-
-        print(errors)
-
         ok = bool(message) and len(errors) == 0
         if not message:
             message = "요청을 처리했지만 응답을 생성하지 못했어. 조건을 조금 더 자세히 알려줘."
 
-        print(message)
         return {
             "jobId": state.job_id,
             "ok": ok,
