@@ -9,13 +9,15 @@ from pydantic import ValidationError
 
 from dotenv import load_dotenv
 
-from app.consumer import build_consumer
-from app.producer import build_producer
-from app.config import LLM_RES_TOPIC
-from app.agent import agent_call
+from .consumer import build_consumer
+from .producer import build_producer
+from .config import LLM_RES_TOPIC
+from .agent import agent_call
 
-from app.model.gmessage import GMessage
-from app.model.recommend import RecommendLlmRequest, RecommendLlmResponse
+from .model.gmessage import GMessage
+from .model.recommend import RecommendLlmRequest, RecommendLlmResponse
+
+from .adapters import GeminiLlmClient, GeminiConfig
 
 load_dotenv()
 
@@ -42,8 +44,9 @@ def main() -> None:
                 consumer.commit(message=msg, asynchronous=False)
                 continue
 
+            llm = GeminiLlmClient(GeminiConfig())
             req = greq.payload
-            out = agent_call(req.model_dump())
+            out = agent_call(req, llm)
 
             inner = RecommendLlmResponse(
                 jobId=req.jobId,
