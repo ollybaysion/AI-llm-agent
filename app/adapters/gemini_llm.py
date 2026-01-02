@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 from google import genai
 from google.genai import types
 
-from ..ports.llm import LlmClient
+from ..ports.llm import LlmClient, LlmCallOptions
 
 class LlmError(RuntimeError):
     pass
@@ -55,7 +55,7 @@ class GeminiLlmClient(LlmClient):
     """
     google-genai 기반 LLM 어댑터.
     - generate_text: 일반 텍스트
-    - generate_json: response_mime_type='applicatoin/json' + robust parse
+    - generate_json: response_mime_type='application/json' + robust parse
     """
 
     def __init__(self, cfg: GeminiConfig):
@@ -66,19 +66,21 @@ class GeminiLlmClient(LlmClient):
         else:
             self.client = genai.Client()
 
-    def generate_text(self, prompt: str) -> str:
+    def generate_text(self, prompt: str, *, options: Optional[LlmCallOptions] = None) -> str:
         resp = self._call_generate_content(
             prompt=prompt,
-            response_mime_type=None,
-            response_schema=None,
+            options=options,
+            default_response_mime_type=None,
+            default_response_schema=None,
         )
         return (resp.text or "").strip()
 
-    def generate_json(self, prompt: str) -> Dit[str, Any]:
+    def generate_json(self, prompt: str, *, options: Optional[LlmCallOptions] = None) -> Dict[str, Any]:
         resp = self._call_generate_content(
             prompt=prompt,
-            response_mime_type="application/json",
-            response_schema=None,
+            options=options,
+            default_response_mime_type="application/json",
+            default_response_schema=None,
         )
         raw = (resp.text or "").strip()
 
@@ -97,8 +99,9 @@ class GeminiLlmClient(LlmClient):
             self,
             *,
             prompt: str,
-            response_mime_type: Optional[str],
-            response_schema: Optional[Dict[str, Any]],
+            options: Optional[LlmCallOptions],
+            default_response_mime_type: Optional[str],
+            default_response_schema: Optional[Dict[str, Any]],
     ):
         last_err: Optional[Exception] = None
 
@@ -108,10 +111,17 @@ class GeminiLlmClient(LlmClient):
                     temperature=self.cfg.temperature,
                     max_output_tokens=self.cfg.max_output_tokens,
                 )
+
+                response_mime_type = options.response_mime_type if options and options.response_mime_type is not None else default_response_mime_type
+                response_schema = options.response_schema if options and options.response_schema is not None else default_response_schema
+
                 if response_mime_type:
                     cfg.response_mime_type = response_mime_type
                 if response_schema:
                     cfg.response_schema = response_schema
+
+                if options and options.tools:
+                    cfg.tools = options.tools
 
                 return self.client.models.generate_content(
                     model=self.cfg.model,
