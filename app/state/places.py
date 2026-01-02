@@ -16,7 +16,7 @@ class PlaceCandidate(BaseModel):
     place_id: str
     name: str
     category: str
-    location: PlaceLocation = Field(defalt_factory=PlaceLocation)
+    location: PlaceLocation = Field(default_factory=PlaceLocation)
     price_level: Optional[Any] = None
     open_hours: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
