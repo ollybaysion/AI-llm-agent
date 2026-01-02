@@ -22,4 +22,10 @@ def run_agent(
     )
 
     final_state: AgentState = graph.invoke(init_state)
-    return final_state
+
+    if isinstance(final_state, AgentState):
+        return final_state
+    if isinstance(final_state, dict):
+        return AgentState.model_validate(final_state)
+
+    raise TypeError(f"Unexpected graph result type: {type(final_state)}")
