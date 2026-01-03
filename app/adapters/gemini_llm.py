@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 import time
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from google import genai
 from google.genai import types
 
-from ..ports.llm import LlmClient
+from ..ports.llm import LlmClient, LlmCallOptions
 
 class LlmError(RuntimeError):
     pass
@@ -18,28 +19,32 @@ class LlmJsonError(LlmError):
 
 def _strip_code_fences(text: str) -> str:
     t = (text or "").strip()
-    if t.startswith("```"):
-        t = t.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
-    return t
+    t = re.sub(r"^```(?:json|JSON)?\s*", "", t)
+    t = re.sub(r"\s*```$", "", t)
+    return t.strip()
 
-def _extract_first_json_object(text: str) -> Dict[str, Any]:
+def _repair_common_json(text: str) -> str:
+    return re.sub(r",\s*([}\]])", r"\1", text)
+
+def _parse_first_json_value(text: str) -> Dict[str, Any]:
     """
     Best-effort JSON object extractor:
     - removes code fences
     - slices from first '{' to last '}'
     """
-    t = _strip_code_fences(text)
+    t = _repair_common_json(_strip_code_fences(text))
 
-    l = t.find("{")
-    r = t.rfind("}")
-    if l == -1 or r == -1 or r <= l:
-        raise LlmJsonError(f"Could not locate JSON object. head={t[:200]!r}")
+    first_obj = t.find("{")
+    first_arr = t.find("[")
+    if first_obj == -1 and first_arr == -1:
+        raise LlmJsonError(f"No JSON start found. head={t[:300]!r}")
 
-    payload = t[l : r + 1]
-    try:
-        return json.loads(payload)
-    except json.JSONDecodeError as e:
-        raise LlmJsonError(f"JSON decode failed: {e}. head={payload[:200]!r}") from e
+    start = first_arr if (first_arr != -1 and (first_obj == -1 or first_arr < first_obj)) else first_obj
+    t2 = t[start:]
+
+    decoder = json.JSONDecoder()
+    val, end = decoder.raw_decode(t2)
+    return val
 
 @dataclass(frozen=True)
 class GeminiConfig:
@@ -55,7 +60,7 @@ class GeminiLlmClient(LlmClient):
     """
     google-genai 기반 LLM 어댑터.
     - generate_text: 일반 텍스트
-    - generate_json: response_mime_type='applicatoin/json' + robust parse
+    - generate_json: response_mime_type='application/json' + robust parse
     """
 
     def __init__(self, cfg: GeminiConfig):
@@ -66,39 +71,39 @@ class GeminiLlmClient(LlmClient):
         else:
             self.client = genai.Client()
 
-    def generate_text(self, prompt: str) -> str:
+    def generate_text(self, prompt: str, *, options: Optional[LlmCallOptions] = None) -> str:
         resp = self._call_generate_content(
             prompt=prompt,
-            response_mime_type=None,
-            response_schema=None,
+            options=options,
+            default_response_mime_type=None,
+            default_response_schema=None,
         )
         return (resp.text or "").strip()
 
-    def generate_json(self, prompt: str) -> Dit[str, Any]:
+    def generate_json(self, prompt: str, *, options: Optional[LlmCallOptions] = None) -> Dict[str, Any]:
         resp = self._call_generate_content(
             prompt=prompt,
-            response_mime_type="application/json",
-            response_schema=None,
+            options=options,
+            default_response_mime_type="application/json",
+            default_response_schema=None,
         )
         raw = (resp.text or "").strip()
 
-        try:
-            obj = json.loads(_strip_code_fences(raw))
-            if not isinstance(obj, dict):
-                raise LlmJsonError(f"Expected JSON object, got {type(obj)}")
-            return obj
-        except Exception:
-            obj = _extract_first_json_object(raw)
-            if not isinstance(obj, dict):
-                raise LlmJsonError(f"Expected JSON object, got {type(obj)}")
-            return obj
+        val = _parse_first_json_value(raw)
+
+        if isinstance(val, dict):
+            return val
+        if isinstance(val, list):
+            return {"candidates": val}
+        raise LlmJsonError(f"Expected dict/list, got {type(val)}")
 
     def _call_generate_content(
             self,
             *,
             prompt: str,
-            response_mime_type: Optional[str],
-            response_schema: Optional[Dict[str, Any]],
+            options: Optional[LlmCallOptions],
+            default_response_mime_type: Optional[str],
+            default_response_schema: Optional[Dict[str, Any]],
     ):
         last_err: Optional[Exception] = None
 
@@ -108,10 +113,17 @@ class GeminiLlmClient(LlmClient):
                     temperature=self.cfg.temperature,
                     max_output_tokens=self.cfg.max_output_tokens,
                 )
+
+                response_mime_type = options.response_mime_type if options and options.response_mime_type is not None else default_response_mime_type
+                response_schema = options.response_schema if options and options.response_schema is not None else default_response_schema
+
                 if response_mime_type:
                     cfg.response_mime_type = response_mime_type
                 if response_schema:
                     cfg.response_schema = response_schema
+
+                if options and options.tools:
+                    cfg.tools = options.tools
 
                 return self.client.models.generate_content(
                     model=self.cfg.model,

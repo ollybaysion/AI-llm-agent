@@ -6,6 +6,7 @@ from ..state.agent_state import AgentState
 from ..nodes import (
     n1_parse_intent_and_constraints,
     n4_make_plan_steps,
+    n5_retrieve_candidates,
     n7_compose_answer,
 )
 from ..graph.routes import route_after_parse
@@ -23,6 +24,10 @@ def build_graph(llm: LlmClient):
         lambda state: n4_make_plan_steps(state, llm),
     )
     g.add_node(
+        "retrieve_candidates",
+        lambda state: n5_retrieve_candidates(state, llm),
+    )
+    g.add_node(
         "compose_answer",
         lambda state: n7_compose_answer(state, llm),
     )
@@ -37,7 +42,8 @@ def build_graph(llm: LlmClient):
         },
     )
 
-    g.add_edge("make_plan_steps", "compose_answer")
+    g.add_edge("make_plan_steps", "retrieve_candidates")
+    g.add_edge("retrieve_candidates", "compose_answer")
     g.add_edge("compose_answer", END)
 
     return g.compile()
