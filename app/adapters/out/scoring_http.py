@@ -17,10 +17,12 @@ class InternalScoreHttpClient(ScoreClient):
         self.base_url = (base_url or os.getenv("INTERNAL_API_BASE_URL", "http://localhost:8080")).rstrip("/")
         self.timeout_s = timeout_s
 
-        def score(self, req: InternalScoreRequest) -> InternalScoreResponse:
-            url = f"{self.base_url}/internal/score"
-            with httpx.Client(timeout=self.timeout_s) as client:
-                r = client.post(url, json=req.model_dump())
-                r.raise_for_status()
-                return InternalScoreResponse.model_validate(r.json())
+    def score(self, req: InternalScoreRequest) -> InternalScoreResponse:
+        url = f"{self.base_url}/internal/score"
+        print(url)
+        print(req)
+        with httpx.Client(timeout=self.timeout_s) as client:
+            r = client.post(url, json=req.model_dump())
+            r.raise_for_status()
+            return InternalScoreResponse.model_validate(r.json())
 

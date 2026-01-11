@@ -12,7 +12,7 @@ class ScoreOptions(BaseModel):
     topK: int = 1
 
 class UserContext(BaseModel):
-    usetId: str
+    userId: str
     area: str
     date: str
     startTime: str
